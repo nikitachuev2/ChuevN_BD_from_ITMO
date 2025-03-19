@@ -14,10 +14,10 @@
 Для построения моделей можно использовать plantUML.
 
 ## Описание предметной области
-Библиотека предоставляет читателям доступ к книгам и другим информационным ресурсам. Она обслуживает читателей, предоставляет возможность брать книги на абонемент и организует различные мероприятия.
+Библиотека предоставляет читателям доступ к книгам и другим информационным ресурсам. Она обслуживает читателей, предоставляет возможность брать книги и организует различные мероприятия.
 
 ## Список сущностей и их классификация
-1. **Книги** (стержневая сущность)
+1. Книги (стержневая сущность)
    - ID книги (INTEGER, PRIMARY KEY)
    - Название книги (VARCHAR)
    - Автор (VARCHAR)
@@ -25,7 +25,7 @@
    - Дата издания (DATE)
    - Количество экземпляров (INTEGER)
 
-2. **Читатели** (стержневая сущность)
+2. Читатели (стержневая сущность)
    - ID читателя (INTEGER, PRIMARY KEY)
    - Имя (VARCHAR)
    - Фамилия (VARCHAR)
@@ -33,24 +33,31 @@
    - Контактная информация (VARCHAR)
    - Дата регистрации (DATE)
 
-3. **Абонементы** (ассоциационная сущность)
-   - ID абонемента (INTEGER, PRIMARY KEY)
+3. Учёт выданных книг (стержневая сущность)
+   - ID учёта (INTEGER, PRIMARY KEY)
    - ID читателя (INTEGER, FOREIGN KEY)
    - ID книги (INTEGER, FOREIGN KEY)
    - Дата выдачи (DATE)
    - Дата возврата (DATE)
-   - Статус (VARCHAR)
+   - Статус книги (VARCHAR) (например, "выдана", "возвращена")
 
-4. **Мероприятия** (стержневая сущность)
+4. Мероприятия (стержневая сущность)
    - ID мероприятия (INTEGER, PRIMARY KEY)
    - Название мероприятия (VARCHAR)
    - Дата и время проведения (TIMESTAMP)
    - Описание мероприятия (TEXT)
    - Максимальное количество участников (INTEGER)
+   - Статус (VARCHAR) (например, "грядущее", "действующее", "прошедшее")
+
+5. Регистрация на мероприятия (ассоциационная сущность)
+   - ID регистрации (INTEGER, PRIMARY KEY)
+   - ID мероприятия (INTEGER, FOREIGN KEY)
+   - ID читателя (INTEGER, FOREIGN KEY)
+   - Дата регистрации (DATE)
+   - Статус регистрации (VARCHAR) (например, "зарегистрирован", "отменён")
 
 ## Инфологическая модель (ER-диаграмма)
 
-```plantuml
 @startuml
 entity "Книги" {
   + ID книги : INT <<PK>>
@@ -70,13 +77,14 @@ entity "Читатели" {
   + Дата регистрации : DATE
 }
 
-entity "Абонементы" {
-  + ID абонемента : INT <<PK>>
+entity "Учёт выданных книг" {
+  + ID учёта : INT <<PK>>
+
   + ID читателя : INT <<FK>>
   + ID книги : INT <<FK>>
   + Дата выдачи : DATE
   + Дата возврата : DATE
-  + Статус : VARCHAR
+  + Статус книги : VARCHAR
 }
 
 entity "Мероприятия" {
@@ -85,79 +93,62 @@ entity "Мероприятия" {
   + Дата и время проведения : TIMESTAMP
   + Описание мероприятия : TEXT
   + Максимальное количество участников : INT
+  + Статус : VARCHAR
 }
 
-Книги ||--o{ Абонементы : "имеет"
-Читатели ||--o{ Абонементы : "берет"
-Читатели }o--o{ Мероприятия : "участвует"
+entity "Регистрация на мероприятия" {
+  + ID регистрации : INT <<PK>>
+  + ID мероприятия : INT <<FK>>
+  + ID читателя : INT <<FK>>
+  + Дата регистрации : DATE
+  + Статус регистрации : VARCHAR
+}
+
+Книги o--o{ Учёт выданных книг : "имеет"
+Читатели --o{ Учёт выданных книг : "берет"
+Читатели }o--o{ Регистрация на мероприятия : "участвует"
+Мероприятия --o{ Регистрация на мероприятия : "проведено"
 @enduml
 
 ## Даталогическая модель
 ### Список таблиц
 1. Книги
 
-   CREATE TABLE books (book_id SERIAL PRIMARY KEY, title VARCHAR(255) NOT NULL, author VARCHAR(255) NOT NULL, genre VARCHAR(100), publication_date DATE, copies_count INTEGER NOT NULL CHECK (copies_count >= 0));
+CREATE TABLE books (book_id SERIAL PRIMARY KEY, title VARCHAR(255) NOT NULL, author VARCHAR(255) NOT NULL, genre VARCHAR(100), publication_date DATE, copies_count INTEGER NOT NULL CHECK (copies_count >= 0));
 
 2. Читатели
 
 CREATE TABLE readers (reader_id SERIAL PRIMARY KEY, first_name VARCHAR(100) NOT NULL, last_name VARCHAR(100) NOT NULL, birth_date DATE, contact_info VARCHAR(255), registration_date DATE DEFAULT CURRENT_DATE);
 
-3. Абонементы
+3. Учёт выданных книг
 
-CREATE TABLE subscriptions (subscription_id SERIAL PRIMARY KEY, reader_id INT REFERENCES readers(reader_id) ON DELETE CASCADE, book_id INT REFERENCES books(book_id) ON DELETE CASCADE, issue_date DATE, return_date DATE, status VARCHAR(100) CHECK (status IN ('выдан', 'возвращен')));
+CREATE TABLE issued_books (issue_id SERIAL PRIMARY KEY, reader_id INT REFERENCES readers(reader_id) ON DELETE CASCADE, book_id INT REFERENCES books(book_id) ON DELETE CASCADE, issue_date DATE, return_date DATE, status VARCHAR(100) CHECK (status IN ('выдан', 'возвращен')));
 
 4. Мероприятия
 
-CREATE TABLE events (event_id SERIAL PRIMARY KEY, title VARCHAR(255) NOT NULL, date_time TIMESTAMP NOT NULL, description TEXT, max_participants INTEGER CHECK (max_participants > 0)); 
+CREATE TABLE events (event_id SERIAL PRIMARY KEY, title VARCHAR(255) NOT NULL, date_time TIMESTAMP NOT NULL, description TEXT, max_participants INTEGER CHECK (max_participants > 0), status VARCHAR(100) CHECK (status IN ('грядущее', 'действующее', 'прошедшее')));
+
+5. Регистрация на мероприятия
+
+CREATE TABLE event_registration (registration_id SERIAL PRIMARY KEY, event_id INT REFERENCES events(event_id) ON DELETE CASCADE, reader_id INT REFERENCES readers(reader_id) ON DELETE CASCADE, registration_date DATE, status VARCHAR(100) CHECK (status IN ('зарегистрирован', 'отменён')));
 
 ### Заполнение таблиц тестовыми данными
 
-#### Описание добавленных тестовых данных
-
-1. Тестовые данные для таблицы books (Книги):
-   - Запись про 'Гарри Поттер':
-     - Автор: Дж.K. Роулинг
-     - Жанр: Фэнтези
-     - Дата издания: 26 июня 1997 года
-     - Количество экземпляров: 5
-   - Запись про 'Война и мир':
-     - Автор: Лев Толстой
-     - Жанр: Исторический роман
-     - Дата издания: 1 января 1869 года
-     - Количество экземпляров: 3
-   - Эти данные демонстрируют наличие книг в библиотеке: "Гарри Поттер" и "Война и мир" 
-
-2. Тестовые данные для таблицы readers (Читатели):
-   - Читатель 1: Чуев Никита, родился 22 сентября 2002 года, контактная информация: nikita@example.com
-   - Читатель 2: Выдумкин Илья, родился 26 июля 1987 года, контактная информация: ilya@example.com
-   - Эти данные показывают, что в библиотеке зарегистрированы два читателя, которые могут брать книги на абонемент.
-
-3. Тестовые данные для таблицы subscriptions (Абонементы):
-   - Абонемент 1 (Читатель 1 - Книга 1): Чуев Никита взял "Гарри Поттер" 1 января 2023 года.
-   - Абонемент 2 (Читатель 2 - Книга 2): Выдумкин Илья взял "Война и мир" 2 января 2023 года.
-   - Эти данные демонстрируют, как читатели используют библиотеку, задействуя абонементы на книги.
-
-4. Тестовые данные для таблицы events (Мероприятия):
-   - Мероприятие 1: Книжная ярмарка, собирающая 100 участников, дата и время - 15 марта 2025 года, 10:00.
-   - Мероприятие 2: Литературный вечер, ожидается 50 участников, дата и время - 20 марта 2025 года, 19:00.
-   - Эти данные показывают, что библиотека активно организует мероприятия, в которых могут участвовать читатели.
-
-#### SQL-коды для вставки данных в каждую таблицу
-
 -- Вставка данных в таблицу books
-INSERT INTO books (title, author, genre, publication_date, copies_count) VALUES ('Гарри Поттер', 'Дж.K. Роулинг', 'Фэнтези', '1997-06-26', 5), ('Война и мир', 'Лев Толстой', 'Исторический роман', '1869-01-01', 3);
+INSERT INTO books (title, author, genre, publication_date, copies_count) VALUES ('Гарри Поттер', 'Дж.К. Роулинг', 'Фэнтези', '1997-06-26', 5), ('Война и мир', 'Лев Толстой', 'Исторический роман', '1869-01-01', 3);
 
 -- Вставка данных в таблицу readers
 INSERT INTO readers (first_name, last_name, birth_date, contact_info) VALUES ('Чуев', 'Никита', '2002-09-22', 'nikita@example.com'), ('Выдумкин', 'Илья', '1987-07-26', 'ilya@example.com');
 
--- Вставка данных в таблицу subscriptions
-INSERT INTO subscriptions (reader_id, book_id, issue_date, return_date, status) VALUES (1, 1, '2023-01-01', NULL, 'выдан'), (2, 2, '2023-01-02', NULL, 'выдан');
+-- Вставка данных в таблицу issued_books
+INSERT INTO issued_books (reader_id, book_id, issue_date, return_date, status) VALUES (1, 1, '2023-01-01', NULL, 'выдан'), (2, 2, '2023-01-02', NULL, 'выдан');
 
 -- Вставка данных в таблицу events
-INSERT INTO events (title, date_time, description, max_participants) 
-VALUES 
-    ('Книжная ярмарка', '2025-03-15 10:00:00', 'Ярмарка для любителей книг', 100), 
-    ('Литературный вечер', '2025-03-20 19:00:00', 'Вечер поэзии и прозы', 50);
+INSERT INTO events (title, date_time, description, max_participants, status) VALUES ('Книжная ярмарка', '2025-03-15 10:00:00', 'Ярмарка для любителей книг', 100, 'грядущее'), ('Литературный вечер', '2025-03-20 19:00:00', 'Вечер поэзии и прозы', 50, 'грядущее');
+
+-- Вставка данных в таблицу event_registration
+INSERT INTO event_registration (event_id, reader_id, registration_date, status) VALUES (1, 1, '2025-03-01', 'зарегистрирован'), (2, 2, '2025-03-05', 'зарегистрирован');
+
 ###  Запросы для проверки заполненных данных
 
 #### SQL-запросы для проверки данных в таблицах:
@@ -184,18 +175,19 @@ SELECT * FROM readers;
 
 (END)
 
--- Проверка данных в таблице subscriptions
-SELECT * FROM subscriptions;
-
-Вы подключены к базе данных "library" как пользователь "postgres".
-library=# SELECT * FROM subscriptions;
- subscription_id | reader_id | book_id | issue_date | return_date | status 
------------------+-----------+---------+------------+-------------+--------
-               1 |         1 |       1 | 2023-01-01 |             | выдан
-               2 |         2 |       2 | 2023-01-02 |             | выдан
+-- Проверка данных в таблице issued_books 
+SELECT * FROM issued_books ;
+Вы подключены к базе данных "li" как пользователь "postgres".
+li=# select * from  issued_books;
+ issue_id | reader_id | book_id | issue_date | return_date | status 
+----------+-----------+---------+------------+-------------+--------
+        1 |         1 |       1 | 2023-01-01 |             | выдан
+        2 |         2 |       2 | 2023-01-02 |             | выдан
 (2 строки)
 
-library=# 
+li=# 
+nikita@debian:~$ sudo -u postgres psql
+
 
 -- Проверка данных в таблице events
 SELECT * FROM events;
@@ -208,3 +200,16 @@ SELECT * FROM events;
 
 (END)
 
+-- Проверка данных в таблице event_registration 
+
+select * from event_registration ;
+
+х "li" как пользователь "postgres".
+li=# select * from  event_registration;
+ registration_id | event_id | reader_id | registration_date |     status      
+-----------------+----------+-----------+-------------------+-----------------
+               1 |        1 |         1 | 2025-03-01        | зарегистрирован
+               2 |        2 |         2 | 2025-03-05        | зарегистрирован
+(2 строки)
+
+li=# 
