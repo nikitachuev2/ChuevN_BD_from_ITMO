@@ -1,0 +1,45 @@
+Предметная область: Магический мир алхимии и зельеварения
+
+Описание:
+В этом мире алхимики играют ключевую роль в создании зелья, которые оказывают влияние на каждый аспект жизни. Каждое зелье требует тщательно подобранных ингредиентов, а успешные алхимические эксперименты приводят к потрясающим эффектам - от исцеления болезней до временного изменения погоды.
+
+1. составить даталогическую модель
+2. составить запросы на создание таблиц и вставку данных
+▎Описание базы данных
+Данная база данных хранит информацию о алхимиках, которые специализируются на варении зельев. В таблице с зельями представлены все возможные зелья, а также ингредиенты, из которых эти зелья можно приготовить. База данных позволяет отслеживать алхимиков, их специализации, созданные зелья и необходимые для их приготовления ингредиенты.
+
+▎Список сущностей и их классификация
+
+1. Алхимики (стержневая сущность)
+
+ID алхимика (INTEGER, PRIMARY KEY)
+Имя (VARCHAR)
+Специализация (VARCHAR)
+
+2. Зелья (стержневая сущность)
+ID зелья (INTEGER, PRIMARY KEY)
+Название зелья (VARCHAR)
+Эффект (TEXT)
+ID алхимика (INTEGER, FOREIGN KEY)
+
+3. Ингредиенты (стержневая сущность)
+ID ингредиента (INTEGER, PRIMARY KEY)
+Название ингредиента (VARCHAR)
+ID зелья (INTEGER, FOREIGN KEY)
+
+
+Создаем базу данных - "lr2"
+CREATE DATABASE lr2;
+
+
+подключаемся 
+
+\c lr2
+Создание таблиц
+
+CREATE TABLE alchemists (id SERIAL PRIMARY KEY, name VARCHAR(100) NOT NULL, specialization VARCHAR(255) NOT NULL); 
+CREATE TABLE potions (id SERIAL PRIMARY KEY, name VARCHAR(100) NOT NULL, effect TEXT NOT NULL, alchemist_id INT REFERENCES alchemists(id) ON DELETE CASCADE); 
+CREATE TABLE ingredients (id SERIAL PRIMARY KEY, name VARCHAR(100) NOT NULL, potion_id INT REFERENCES potions(id) ON DELETE CASCADE); 
+INSERT INTO alchemists (name, specialization) VALUES ('Алиса', 'Управление погодой'), ('Борис', 'Лечение сложных внутренних болезней'); 
+INSERT INTO potions (name, effect, alchemist_id) VALUES ('Зелье останавливающее дождь', 'Прекращает дождь на 24 часа', 1), ('Зелье лечащее рак', 'Сильно улучшает состояние при раке', 2); 
+INSERT INTO ingredients (name, potion_id) VALUES ('Слеза единорога', 1), ('Зуб тигра', 2);
