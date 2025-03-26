@@ -75,6 +75,22 @@ CREATE TABLE book_loans (loan_id SERIAL PRIMARY KEY, reader_id INTEGER NOT NULL 
 1. Создание таблиц: (были приведены выше).
 2. Удаление таблиц: DROP TABLE IF EXISTS event_registrations; DROP TABLE IF EXISTS events; DROP TABLE IF EXISTS book_loans; DROP TABLE IF EXISTS readers; DROP TABLE IF EXISTS books;`
 
+#### Удаление данных из таблиц
+
+-- Удаление всех записей из book_loans
+DELETE FROM book_loans;
+
+-- Удаление всех записей из event_registrations
+DELETE FROM event_registrations;
+
+-- Удаление всех записей из events
+DELETE FROM events;
+
+-- Удаление всех записей из readers
+DELETE FROM readers;
+
+-- Удаление всех записей из books
+DELETE FROM books;
 
 ### : Заполнение таблиц данными
 
@@ -104,40 +120,312 @@ INSERT INTO event_registrations (event_id, reader_id, registration_date, registr
 
 SELECT title, author FROM books;
 
+nikita@debian:~$ sudo -u postgres psql
+
+lr3=# SELECT title, author FROM books;
+         title         |       author        
+-----------------------+---------------------
+ 1984                  | George Orwell
+ To Kill a Mockingbird | Harper Lee
+ The Great Gatsby      | F. Scott Fitzgerald
+ Moby Dick             | Herman Melville
+(4 строки)
+
+lr3=# 
+
 #### : Получение информации о читателях, которые взяли книги
 
 SELECT r.first_name, r.last_name, bl.loan_date, b.title FROM readers r JOIN book_loans bl ON r.reader_id = bl.reader_id JOIN books b ON bl.book_id = b.book_id;
+
+postgres=# \c lr3;
+
+lr3=# ^C
+lr3=# 
+SELECT r.first_name, r.last_name, bl.loan_date, b.title FROM readers r JOIN book_loans bl ON r.reader_id = bl.reader_id JOIN books b ON bl.book_id = b.book_id;
+ first_name | last_name | loan_date  |         title         
+------------+-----------+------------+-----------------------
+ Алексей    | Иванов    | 2023-03-01 | 1984
+ Мария      | Петрова   | 2023-03-05 | To Kill a Mockingbird
+ Алексей    | Иванов    | 2023-04-01 | The Great Gatsby
+ Иван       | Сидоров   | 2023-04-10 | 1984
+(4 строки)
+
+lr3=# 
 
 #### : Получение списка всех мероприятий и количества участников
 
 SELECT e.title, e.event_datetime, COUNT(er.registration_id) AS participant_count FROM events e LEFT JOIN event_registrations er ON e.event_id = er.event_id GROUP BY e.event_id;
 
+lr3=# 
+SELECT r.first_name, r.last_name, bl.loan_date, b.title FROM readers r JOIN book_loans bl ON r.reader_id = bl.reader_id JOIN books b ON bl.book_id = b.book_id;
+ first_name | last_name | loan_date  |         title         
+------------+-----------+------------+-----------------------
+ Алексей    | Иванов    | 2023-03-01 | 1984
+ Мария      | Петрова   | 2023-03-05 | To Kill a Mockingbird
+ Алексей    | Иванов    | 2023-04-01 | The Great Gatsby
+ Иван       | Сидоров   | 2023-04-10 | 1984
+(4 строки)
+
+lr3=# ^C
+lr3=# SELECT e.title, e.event_datetime, COUNT(er.registration_id) AS participant_count FROM events e LEFT JOIN event_registrations er ON e.event_id = er.event_id GROUP BY e.event_id;
+          title          |   event_datetime    | participant_count 
+-------------------------+---------------------+-------------------
+ Воркшоп по писательству | 2023-06-01 16:00:00 |                 0
+ Лекция по литературе    | 2023-05-15 14:00:00 |                 1
+ Чтение вслух            | 2023-05-20 18:00:00 |                 1
+ Книжная выставка        | 2023-05-10 10:00:00 |                 2
+(4 строки)
+
+lr3=# 
+
 #### : Получение списка выданных книг с информацией о дате возврата
 
 SELECT b.title, bl.loan_date, bl.return_date FROM books b JOIN book_loans bl ON b.book_id = bl.book_id WHERE bl.status = 'выдана';
+
+
+lr3=# ^C
+lr3=# SELECT e.title, e.event_datetime, COUNT(er.registration_id) AS participant_count FROM events e LEFT JOIN event_registrations er ON e.event_id = er.event_id GROUP BY e.event_id;
+          title          |   event_datetime    | participant_count 
+-------------------------+---------------------+-------------------
+ Воркшоп по писательству | 2023-06-01 16:00:00 |                 0
+ Лекция по литературе    | 2023-05-15 14:00:00 |                 1
+ Чтение вслух            | 2023-05-20 18:00:00 |                 1
+ Книжная выставка        | 2023-05-10 10:00:00 |                 2
+(4 строки)
+
+lr3=# ^C
+lr3=# 
+SELECT b.title, bl.loan_date, bl.return_date FROM books b JOIN book_loans bl ON b.book_id = bl.book_id WHERE bl.status = 'выдана';
+      title       | loan_date  | return_date 
+------------------+------------+-------------
+ 1984             | 2023-03-01 | 
+ The Great Gatsby | 2023-04-01 | 
+(2 строки)
+
+lr3=# 
+
 
 #### : Получение всех читателей с количеством книг на руках
 
 SELECT r.first_name, r.last_name, COUNT(bl.loan_id) AS books_on_loan FROM readers r LEFT JOIN book_loans bl ON r.reader_id = bl.reader_id WHERE bl.status = 'выдана' GROUP BY r.reader_id;
 
+nikita@debian:~$ sudo -u postgres psql
+[sudo] пароль для nikita: 
+psql (17.4 (Debian 17.4-1.pgdg120+2))
+Введите "help", чтобы получить справку.
+
+postgres=# \c lr3;
+Вы подключены к базе данных "lr3" как пользователь "postgres".
+lr3=# 
+SELECT r.first_name, r.last_name, COUNT(bl.loan_id) AS books_on_loan FROM readers r LEFT JOIN book_loans bl ON r.reader_id = bl.reader_id WHERE bl.status = 'выдана' GROUP BY r.reader_id;
+ first_name | last_name | books_on_loan 
+------------+-----------+---------------
+ Алексей    | Иванов    |             2
+(1 строка)
+
+lr3=# 
+
+
 ### : Составление SQL запросов на объединение таблиц предметной области
 
-#### : Получение полного списка данных о читателях и их выданных книгах
 
-SELECT r.first_name, r.last_name, b.title, bl.loan_date FROM readers r JOIN book_loans bl ON r.reader_id = bl.reader_id JOIN books b ON bl.book_id = b.book_id WHERE bl.status = 'выдана';
+#### 1. INNER JOIN
 
-#### : Получение статистики по мероприятиям и зарегистрированным читателям
+SELECT r.first_name, r.last_name, bl.loan_date, b.title FROM readers r JOIN book_loans bl ON r.reader_id = bl.reader_id JOIN books b ON bl.book_id = b.book_id;
+Запрос возвращает списки имен читателей и названия книг, которые они взяли на заметку, связывая таблицы читателей, займов книг и книг.
 
-SELECT e.title, COUNT(er.reader_id) AS registered_count FROM events e LEFT JOIN event_registrations er ON e.event_id = er.event_id GROUP BY e.event_id;
+postgres=# \c lr3;
+Вы подключены к базе данных "lr3" как пользователь "postgres".
+lr3=# 
+SELECT r.first_name, r.last_name, COUNT(bl.loan_id) AS books_on_loan FROM readers r LEFT JOIN book_loans bl ON r.reader_id = bl.reader_id WHERE bl.status = 'выдана' GROUP BY r.reader_id;
+ first_name | last_name | books_on_loan 
+------------+-----------+---------------
+ Алексей    | Иванов    |             2
+(1 строка)
 
-#### : Получение списка читателей, которые зарегистрированы на каждое мероприятие
+lr3=# ^C
+lr3=# 
+SELECT r.first_name, r.last_name, bl.loan_date, b.title FROM readers r JOIN book_loans bl ON r.reader_id = bl.reader_id JOIN books b ON bl.book_id = b.book_id;
+ first_name | last_name | loan_date  |         title         
+------------+-----------+------------+-----------------------
+ Алексей    | Иванов    | 2023-03-01 | 1984
+ Мария      | Петрова   | 2023-03-05 | To Kill a Mockingbird
+ Алексей    | Иванов    | 2023-04-01 | The Great Gatsby
+ Иван       | Сидоров   | 2023-04-10 | 1984
+(4 строки)
 
-SELECT e.title, r.first_name, r.last_name FROM events e JOIN event_registrations er ON e.event_id = er.event_id JOIN readers r ON er.reader_id = r.reader_id;
+lr3=# 
 
-#### : Получение информации о книгах и количестве раз, когда они были выданы
 
-SELECT b.title, COUNT(bl.loan_id) AS loan_count FROM books b LEFT JOIN book_loans bl ON b.book_id = bl.book_id GROUP BY b.book_id;
+#### 2. LEFT JOIN
 
-#### : Получение списка всех мероприятий с читателями, зарегистрированными на них
+SELECT e.title, e.event_datetime, COUNT(er.registration_id) AS participant_count FROM events e LEFT JOIN event_registrations er ON e.event_id = er.event_id GROUP BY e.event_id;
+Запрос возвращает все мероприятия и количество участников для каждого из них, включая мероприятия без зарегистрированных участников.
 
-SELECT e.title, r.first_name, r.last_name FROM events e LEFT JOIN event_registrations er ON e.event_id = er.event_id LEFT JOIN readers r ON er.reader_id = r.reader_id;
+SELECT r.first_name, r.last_name, bl.loan_date, b.title FROM readers r JOIN book_loans bl ON r.reader_id = bl.reader_id JOIN books b ON bl.book_id = b.book_id;
+ first_name | last_name | loan_date  |         title         
+------------+-----------+------------+-----------------------
+ Алексей    | Иванов    | 2023-03-01 | 1984
+ Мария      | Петрова   | 2023-03-05 | To Kill a Mockingbird
+ Алексей    | Иванов    | 2023-04-01 | The Great Gatsby
+ Иван       | Сидоров   | 2023-04-10 | 1984
+(4 строки)
+
+lr3=# ^C
+lr3=# 
+SELECT e.title, e.event_datetime, COUNT(er.registration_id) AS participant_count FROM events e LEFT JOIN event_registrations er ON e.event_id = er.event_id GROUP BY e.event_id;
+          title          |   event_datetime    | participant_count 
+-------------------------+---------------------+-------------------
+ Воркшоп по писательству | 2023-06-01 16:00:00 |                 0
+ Лекция по литературе    | 2023-05-15 14:00:00 |                 1
+ Чтение вслух            | 2023-05-20 18:00:00 |                 1
+ Книжная выставка        | 2023-05-10 10:00:00 |                 2
+(4 строки)
+
+lr3=# 
+
+
+#### 3. RIGHT JOIN
+
+SELECT b.title, bl.loan_date, bl.return_date FROM book_loans bl RIGHT JOIN books b ON bl.book_id = b.book_id WHERE bl.status = 'выдана';
+Запрос показывает все книги, которые были выданы, даже если они не имеют текущей записи о займе, что позволяет увидеть все выданные книги.
+
+lr3=# ^C
+lr3=# 
+SELECT e.title, e.event_datetime, COUNT(er.registration_id) AS participant_count FROM events e LEFT JOIN event_registrations er ON e.event_id = er.event_id GROUP BY e.event_id;
+          title          |   event_datetime    | participant_count 
+-------------------------+---------------------+-------------------
+ Воркшоп по писательству | 2023-06-01 16:00:00 |                 0
+ Лекция по литературе    | 2023-05-15 14:00:00 |                 1
+ Чтение вслух            | 2023-05-20 18:00:00 |                 1
+ Книжная выставка        | 2023-05-10 10:00:00 |                 2
+(4 строки)
+
+lr3=# ^C
+lr3=# 
+SELECT b.title, bl.loan_date, bl.return_date FROM book_loans bl RIGHT JOIN books b ON bl.book_id = b.book_id WHERE bl.status = 'выдана';
+      title       | loan_date  | return_date 
+------------------+------------+-------------
+ 1984             | 2023-03-01 | 
+ The Great Gatsby | 2023-04-01 | 
+(2 строки)
+
+lr3=# 
+
+
+#### 4. FULL OUTER JOIN
+
+SELECT e.title, r.first_name, r.last_name FROM events e FULL OUTER JOIN event_registrations er ON e.event_id = er.event_id FULL OUTER JOIN readers r ON er.reader_id = r.reader_id;
+Запрос возвращает полные списки мероприятий и читателей, зарегистрированных на них, включая тех, кто не зарегистрировался на мероприятия.
+
+SELECT b.title, bl.loan_date, bl.return_date FROM book_loans bl RIGHT JOIN books b ON bl.book_id = b.book_id WHERE bl.status = 'выдана';
+      title       | loan_date  | return_date 
+------------------+------------+-------------
+ 1984             | 2023-03-01 | 
+ The Great Gatsby | 2023-04-01 | 
+(2 строки)
+
+lr3=# ^C
+lr3=# 
+SELECT e.title, r.first_name, r.last_name FROM events e FULL OUTER JOIN event_registrations er ON e.event_id = er.event_id FULL OUTER JOIN readers r ON er.reader_id = r.reader_id;
+          title          | first_name | last_name 
+-------------------------+------------+-----------
+ Книжная выставка        | Алексей    | Иванов
+ Книжная выставка        | Мария      | Петрова
+ Лекция по литературе    | Алексей    | Иванов
+ Чтение вслух            | Иван       | Сидоров
+ Воркшоп по писательству |            | 
+                         | Наталья    | Смирнова
+(6 строк)
+
+lr3=# 
+
+
+#### 5. CROSS JOIN
+
+SELECT r.first_name, r.last_name, e.title FROM readers r CROSS JOIN events e;
+
+lr3=# ^C
+lr3=# 
+SELECT r.first_name, r.last_name, e.title FROM readers r CROSS JOIN events e;
+ first_name | last_name |          title          
+------------+-----------+-------------------------
+ Алексей    | Иванов    | Книжная выставка
+ Мария      | Петрова   | Книжная выставка
+ Иван       | Сидоров   | Книжная выставка
+ Наталья    | Смирнова  | Книжная выставка
+ Алексей    | Иванов    | Лекция по литературе
+ Мария      | Петрова   | Лекция по литературе
+ Иван       | Сидоров   | Лекция по литературе
+ Наталья    | Смирнова  | Лекция по литературе
+ Алексей    | Иванов    | Чтение вслух
+ Мария      | Петрова   | Чтение вслух
+ Иван       | Сидоров   | Чтение вслух
+ Наталья    | Смирнова  | Чтение вслух
+ Алексей    | Иванов    | Воркшоп по писательству
+ Мария      | Петрова   | Воркшоп по писательству
+ Иван       | Сидоров   | Воркшоп по писательству
+ Наталья    | Смирнова  | Воркшоп по писательству
+(16 строк)
+
+lr3=# 
+
+
+Запрос возвращает все возможные комбинации читателей и мероприятий, показывая, кто потенциально может участвовать в каждом мероприятии.
+
+#### 6. NATURAL JOIN
+
+SELECT r.first_name, r.last_name, e.title FROM readers r NATURAL JOIN event_registrations er NATURAL JOIN events e;
+Запрос возвращает имена читателей и названия мероприятий, на которые они зарегистрировались, автоматически связывая таблицы по общим полям.
+
+ Наталья    | Смирнова  | Книжная выставка
+ Алексей    | Иванов    | Лекция по литературе
+ Мария      | Петрова   | Лекция по литературе
+ Иван       | Сидоров   | Лекция по литературе
+ Наталья    | Смирнова  | Лекция по литературе
+ Алексей    | Иванов    | Чтение вслух
+ Мария      | Петрова   | Чтение вслух
+ Иван       | Сидоров   | Чтение вслух
+ Наталья    | Смирнова  | Чтение вслух
+ Алексей    | Иванов    | Воркшоп по писательству
+ Мария      | Петрова   | Воркшоп по писательству
+ Иван       | Сидоров   | Воркшоп по писательству
+ Наталья    | Смирнова  | Воркшоп по писательству
+(16 строк)
+
+lr3=# ^C
+lr3=# 
+SELECT r.first_name, r.last_name, e.title FROM readers r NATURAL JOIN event_registrations er NATURAL JOIN events e;
+ first_name | last_name | title 
+------------+-----------+-------
+(0 строк)
+
+lr3=# 
+
+
+#### 7. JOIN USING
+
+SELECT r.first_name, r.last_name, e.title FROM readers r JOIN event_regISTRATIONS er USING(reader_id) JOIN events e USING(event_id);
+Запрос получает имена читателей и названия мероприятий, связывая таблицы по общим атрибутам reader_id и event_id
+ Наталья    | Смирнова  | Воркшоп по писательству
+(16 строк)
+
+lr3=# ^C
+lr3=# 
+SELECT r.first_name, r.last_name, e.title FROM readers r NATURAL JOIN event_registrations er NATURAL JOIN events e;
+ first_name | last_name | title 
+------------+-----------+-------
+(0 строк)
+
+lr3=# ^C
+lr3=# 
+SELECT r.first_name, r.last_name, e.title FROM readers r JOIN event_regISTRATIONS er USING(reader_id) JOIN events e USING(event_id);
+ first_name | last_name |        title         
+------------+-----------+----------------------
+ Алексей    | Иванов    | Книжная выставка
+ Мария      | Петрова   | Книжная выставка
+ Алексей    | Иванов    | Лекция по литературе
+ Иван       | Сидоров   | Чтение вслух
+(4 строки)
+
+lr3=# 
