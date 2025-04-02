@@ -1,0 +1,228 @@
+# Отчет по лабораторной работе №4
+Дисциплина: Взаимодействие с базами данных
+Студент: Чуев Никита
+Группа: П4150
+Дата выполнения: 01.04.2025
+
+## Цель работы
+Разработка дополнительных объектов базы данных для обеспечения бизнес-логики информационной системы библиотеки, включающая создание триггеров, функций, процедур и транзакций.
+
+## Бизнес-правила предметной области
+В рамках информационной системы библиотеки были определены следующие бизнес-правила:
+1. Учет выдачи книг:
+   - Каждая книга может быть выдана только при наличии доступных экземпляров. Максимальное количество одновременно выданных книг одному читателю составляет 5. Это допускает равный доступ к коллекции для всех пользователей.
+   - Триггер: При обновлении статуса книги на "выдана" система проверяет наличие доступных экземпляров. Если экземпляры доступны, количество уменьшается на 1. Если доступных экземпляров нет, транзакция откатывается, и пользователю выдается уведомление с рекомендацией проверить наличие других книг.
+   - Функция: Проверка количества доступных экземпляров книги перед выдачей, включая возможность предоставления альтернативных рекомендаций в случае отсутствия экземпляров.
+
+2. Возврат книг и начисление штрафа:
+   - Если книга возвращается позже срока (например, 30 дней с момента выдачи), для читателя автоматически рассчитывается штраф. Начальный штраф составляет 50 рублей за первый день просрочки и увеличивается по экспоненциальной формуле (например, 50 рублей за первый день, 100 рублей за второй, 200 рублей за третий и так далее).
+   - Триггер: При обновлении статуса книги на "возвращена" система проверяет дату возврата. Если книга возвращается поздно, штраф автоматически вычисляется и записывается в отдельную таблицу fines (штрафы), связанной с читателем.
+   - Функция: Расчет суммы штрафа на основе длительности просрочки с применением экспоненциальной формулы. Функция будет обновлять таблицу штрафов с новыми данными.
+
+3. Регистрация на мероприятия:
+   - Читатель может зарегистрироваться на мероприятия только в том случае, если сумма его активных штрафов не превышает 500 рублей. При наличии задолженности регистрация в системах блокируется до ее погашения.
+   - Триггер: При попытке регистрации на мероприятие система проверяет, имеются ли активные штрафы у читателя. Если сумма штрафов превышает 500 рублей, транзакция откатывается, и пользователю отображается сообщение о том, что регистрация временно недоступна из-за задолженности.
+   - Функция: Проверка наличия активных штрафов перед регистрацией на мероприятия, предоставляя пользователю информацию о текущем состоянии долгов и предлагая способы их погашения, а также возможные акции.
+
+###воспользуемся базой данных, разработанной в лабораторной работе 3, и модифицируем ее, добавив новую таблицу для хранения информации о штрафах читателей:
+
+CREATE TABLE fines (fine_id SERIAL PRIMARY KEY, reader_id INTEGER NOT NULL REFERENCES readers(reader_id) ON DELETE CASCADE, book_id INTEGER NOT NULL REFERENCES books(book_id) ON DELETE CASCADE, amount NUMERIC NOT NULL, date DATE NOT NULL DEFAULT CURRENT_DATE, status VARCHAR(50) CHECK (status IN ('активный', 'погашенный')) NOT NULL DEFAULT 'активный'); 
+
+Также добавим в  таблицу для учёта выданных книг  ограничение на максимальное количество выданных книг с помощью тригера.  
+
+CREATE TABLE book_loans (loan_id SERIAL PRIMARY KEY, reader_id INTEGER NOT NULL REFERENCES readers(reader_id) ON DELETE CASCADE, book_id INTEGER NOT NULL REFERENCES books(book_id) ON DELETE CASCADE, loan_date DATE NOT NULL DEFAULT CURRENT_DATE, return_date DATE, status VARCHAR(50) CHECK (status IN ('выдана', 'возвращена')) NOT NULL, CHECK ((SELECT COUNT(*) FROM book_loans WHERE reader_id = reader_id AND status = 'выдана') < 5)); 
+
+### 1. Функция проверки доступности книг перед выдачей
+
+Эта функция проверяет, есть ли доступные экземпляры книги, и возвращает количество доступных экземпляров. Если книг недостаточно, возвращается код ошибки.
+
+CREATE OR REPLACE FUNCTION check_book_availability(book_id INTEGER)
+RETURNS INTEGER AS $$
+DECLARE
+    available_copies INTEGER;
+BEGIN
+    SELECT copies_count INTO available_copies FROM books WHERE book_id = book_id;
+    IF available_copies <= 0 THEN
+        RAISE EXCEPTION 'Нет доступных экземпляров для выдачи книги с ID %', book_id;
+    END IF;
+    RETURN available_copies;
+END;
+$$ LANGUAGE plpgsql;
+
+### 2. Функция расчета штрафа за просрочку возврата книги
+
+Эта функция принимает дату возврата и дату, когда книга должна была быть возвращена. Если книга возвращена поздно, она вычисляет штраф по экспоненциальной формуле.
+
+CREATE OR REPLACE FUNCTION calculate_late_fee(due_date DATE, return_date DATE)
+RETURNS NUMERIC AS $$
+DECLARE
+    overdue_days INTEGER;
+    fee NUMERIC := 0;
+BEGIN
+    IF return_date > due_date THEN
+        overdue_days := return_date - due_date;
+        
+        -- Вычисление суммы штрафа по экспоненциальной формуле
+        FOR i IN 1..overdue_days LOOP
+            fee := fee + 50 * POWER(2, i - 1); -- Формула: 50 рублей за первый день, удваивается каждый день
+        END LOOP;
+    END IF;
+
+    RETURN fee;
+END;
+$$ LANGUAGE plpgsql;
+
+### 3. Функция проверки активных штрафов перед регистрацией на мероприятие
+
+Эта функция проверяет, есть ли у читателя активные штрафы и превышает ли сумма этих штрафов лимит (500 рублей). Возвращает TRUE, если можно зарегистрироваться, и FALSE в противном случае.
+
+CREATE OR REPLACE FUNCTION can_register_for_event(reader_id INTEGER)
+RETURNS BOOLEAN AS $$
+DECLARE
+    total_fines NUMERIC;
+BEGIN
+    SELECT SUM(amount) INTO total_fines 
+    FROM fines 
+    WHERE reader_id = reader_id AND status = 'активный';
+
+    IF total_fines IS NULL THEN
+        total_fines := 0; -- Если штрафов нет, устанавливаем сумму в 0
+    END IF;
+
+    IF total_fines > 500 THEN
+        RETURN FALSE; -- Штрафы превышают предел
+    ELSE
+        RETURN TRUE; -- Можно регистрироваться
+    END IF;
+END;
+$$ LANGUAGE plpgsql;
+
+
+### 1. Триггер для учета выдачи книг
+
+Этот триггер будет срабатывать перед добавлением записи о выдаче книги в таблицу book_loans. Он использует функцию check_book_availability(), чтобы убедиться, что у книги достаточно доступных экземпляров для выдачи.
+
+CREATE OR REPLACE FUNCTION trigger_check_book_availability()
+RETURNS TRIGGER AS $$
+BEGIN
+    -- Проверка доступности книги перед выдачей
+    PERFORM check_book_availability(NEW.book_id);
+    
+    RETURN NEW; -- Продолжаем выполнение операции
+EXCEPTION
+    WHEN others THEN
+        RAISE EXCEPTION 'Книга не может быть выдана: %', SQLERRM; 
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER before_book_loan
+BEFORE INSERT ON book_loans
+FOR EACH ROW
+EXECUTE FUNCTION trigger_check_book_availability();
+
+### 2. Триггер для начисления штрафа при возврате книг
+
+Этот триггер будет выполняться после обновления статуса книги на "возвращена" в таблице book_loans. Он будет вычислять штраф, используя функцию calculate_late_fee(), и добавлять сумму штрафа в таблицу fines.
+
+CREATE OR REPLACE FUNCTION trigger_calculate_late_fee()
+RETURNS TRIGGER AS $$
+DECLARE
+    fee NUMERIC;
+BEGIN
+    -- Вычисляем штраф за просрочку
+    fee := calculate_late_fee(NEW.due_date, CURRENT_DATE);
+
+    -- Добавляем новый штраф в таблицу fines
+    INSERT INTO fines (reader_id, book_id, amount, date, status)
+    VALUES (NEW.reader_id, NEW.book_id, fee, CURRENT_DATE, 'активный');
+
+    RETURN NEW; -- Продолжаем выполнение операции
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER after_book_return
+AFTER UPDATE OF status ON book_loans
+FOR EACH ROW
+WHEN (NEW.status = 'возвращена')
+EXECUTE FUNCTION trigger_calculate_late_fee();
+
+### 3. Триггер для проверки штрафов при регистрации на мероприятие
+
+Этот триггер будет выполняться перед добавлением записи о регистрации на мероприятие в таблицу event_registrations. Он использует функцию can_register_for_event(), чтобы проверить, может ли читатель регистрироваться с учетом активных штрафов.
+
+CREATE OR REPLACE FUNCTION trigger_check_reader_fines()
+RETURNS TRIGGER AS $$
+BEGIN
+    -- Проверяем возможность регистрации на мероприятие
+    IF NOT can_register_for_event(NEW.reader_id) THEN
+        RAISE EXCEPTION 'Регистрация невозможна из-за активных штрафов.';
+    END IF;
+
+    RETURN NEW; -- Продолжаем выполнение операции
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER before_event_registration
+BEFORE INSERT ON event_registrations
+FOR EACH ROW
+EXECUTE FUNCTION trigger_check_reader_fines();
+
+-- Транзакция выдачи книги читателю
+BEGIN;
+
+INSERT INTO book_loans (reader_id, book_id, loan_date, status)
+VALUES (1, 1, CURRENT_DATE, 'выдана');
+
+COMMIT;
+
+-- Транзакция возврата книги с начислением штрафа
+BEGIN;
+
+UPDATE book_loans
+SET status = 'возвращена', return_date = CURRENT_DATE
+WHERE loan_id = 1;
+
+COMMIT;
+
+-- Транзакция регистрации читателя на мероприятие
+BEGIN;
+
+INSERT INTO event_registrations (event_id, reader_id, registration_date, registration_status)
+VALUES (1, 1, CURRENT_DATE, 'зарегистрирован');
+
+COMMIT;
+
+
+-- Транзакция выдачи книги читателю
+BEGIN;
+
+INSERT INTO book_loans (reader_id, book_id, loan_date, status)
+VALUES (1, 1, CURRENT_DATE, 'выдана');
+
+COMMIT;
+
+-- Транзакция возврата книги с начислением штрафа
+BEGIN;
+
+UPDATE book_loans
+SET status = 'возвращена', return_date = CURRENT_DATE
+WHERE loan_id = 1;
+
+COMMIT;
+
+-- Транзакция регистрации читателя на мероприятие
+BEGIN;
+
+INSERT INTO event_registrations (event_id, reader_id, registration_date, registration_status)
+VALUES (1, 1, CURRENT_DATE, 'зарегистрирован');
+
+COMMIT;
+
+### Итог
+
+
+В нашей базе данных уже существуют уникальные идентификаторы (ID) для книг и читателей, которые служат первичными ключами (PRIMARY KEY) в соответствующих таблицах. Однако в реальной жизни читатели зачастую не помнят свои ID наизусть. Поэтому целесообразно создать индекс на ФИО (фамилию и имя) читателей, чтобы упростить поиск их записей.
+
+CREATE INDEX idx_readers_name ON readers (last_name, first_name);
+
+Такой индекс позволит быстрее выполнять запросы на поиск и сортировку по фамилии и имени читателей, что может значительно повысить удобство работы с базой данных и улучшить пользовательский опыт.
