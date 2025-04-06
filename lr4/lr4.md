@@ -47,25 +47,24 @@ CREATE TABLE event_registrations (registration_id SERIAL PRIMARY KEY, event_id I
 CREATE TABLE fines (fine_id SERIAL PRIMARY KEY, reader_id INTEGER NOT NULL REFERENCES readers(reader_id) ON DELETE CASCADE, book_id INTEGER NOT NULL REFERENCES books(book_id) ON DELETE CASCADE, fine_amount DECIMAL(10,2) NOT NULL, date_issued DATE NOT NULL DEFAULT CURRENT_DATE);
 
 ### создадим три функции и тригера
-### 1. Функция для проверки доступных экземпляров книги перед выдачей
 
--- Функция для проверки наличия доступных экземпляров книги
-CREATE OR REPLACE FUNCTION check_book_availability(book_id INT) 
+### 1. Функция для проверки наличия доступных экземпляров книги
+
+CREATE OR REPLACE FUNCTION check_book_availability(v_book_id INT) 
 RETURNS BOOLEAN AS $$
 DECLARE
     available_copies INT;
 BEGIN
     -- Получаем количество доступных экземпляров книги
-    SELECT copies_count INTO available_copies FROM books WHERE book_id = book_id;
+    SELECT copies_count INTO available_copies FROM books WHERE book_id = v_book_id;
 
     -- Если количество доступных экземпляров больше 0, возвращаем TRUE, иначе FALSE
-    RETURN available_copies > 0;
+    RETURN COALESCE(available_copies, 0) > 0; -- Используем COALESCE для обработки NULL
 END;
 $$ LANGUAGE plpgsql;
 
 ### 2. Триггер для автоматического уменьшения количества экземпляров книги при выдаче
 
--- Триггер для уменьшения количества экземпляров книги при её выдаче
 CREATE OR REPLACE FUNCTION trigger_reduce_book_copies() 
 RETURNS TRIGGER AS $$
 BEGIN
@@ -86,15 +85,14 @@ FOR EACH ROW EXECUTE FUNCTION trigger_reduce_book_copies();
 
 ### 3. Функция для расчета суммы штрафа при возврате книги
 
--- Функция для расчета суммы штрафа на основе длительности просрочки
-CREATE OR REPLACE FUNCTION calculate_fine(loan_id INT) 
+CREATE OR REPLACE FUNCTION calculate_fine(v_loan_id INT) 
 RETURNS INT AS $$
 DECLARE
     days_late INT;
     fine_amount INT;
 BEGIN
     -- Получаем количество дней просрочки
-    SELECT CURRENT_DATE - loan_date INTO days_late FROM book_loans WHERE loan_id = loan_id;
+    SELECT CURRENT_DATE - loan_date INTO days_late FROM book_loans WHERE loan_id = v_loan_id; 
 
     -- Проверяем, если книга возвращается позже срока
     IF days_late > 0 THEN
@@ -109,7 +107,6 @@ $$ LANGUAGE plpgsql;
 
 ### 4. Триггер для начисления штрафа при возврате книги
 
--- Триггер для начисления штрафа при возврате книги
 CREATE OR REPLACE FUNCTION trigger_calculate_fine() 
 RETURNS TRIGGER AS $$
 DECLARE
@@ -117,13 +114,13 @@ DECLARE
 BEGIN
     -- Рассчитываем штраф на основе записи о выдаче
     fine_amount := calculate_fine(NEW.loan_id);
-    
+
     -- Если штраф больше 0, добавляем запись о штрафе в таблицу fines
     IF fine_amount > 0 THEN
-        INSERT INTO fines (reader_id, fine_amount, date_issued) 
-        VALUES (NEW.reader_id, fine_amount, CURRENT_DATE);
+        INSERT INTO fines (reader_id, book_id, fine_amount, date_issued) 
+        VALUES (NEW.reader_id, NEW.book_id, fine_amount, CURRENT_DATE);
     END IF;
-    
+
     RETURN NEW; -- Возвращаем изменения
 END;
 $$ LANGUAGE plpgsql;
@@ -134,38 +131,36 @@ FOR EACH ROW EXECUTE FUNCTION trigger_calculate_fine();
 
 ### 5. Функция для проверки активных штрафов перед регистрацией на мероприятие
 
--- Функция для проверки суммы активных штрафов читателя
-CREATE OR REPLACE FUNCTION check_active_fines(reader_id INT) 
+CREATE OR REPLACE FUNCTION check_active_fines(v_reader_id INT) 
 RETURNS BOOLEAN AS $$
 DECLARE
-    total_fine INT;
+    total_fine DECIMAL(10, 2);
 BEGIN
     -- Суммируем все активные штрафы для данного читателя
-    SELECT COALESCE(SUM(fine_amount), 0) INTO total_fine FROM fines WHERE reader_id = reader_id;
+    SELECT COALESCE(SUM(fine_amount), 0) INTO total_fine FROM fines WHERE reader_id = v_reader_id; 
 
     -- Если сумма штрафов больше 500 рублей, возвращаем FALSE
-
     RETURN total_fine <= 500; -- Возвращаем TRUE, если активных штрафов меньше или равно 500
 END;
 $$ LANGUAGE plpgsql;
 
 ### 6. Триггер для блока регистрации на мероприятия при наличии задолженности
 
--- Триггер для блокировки регистрации на мероприятие при наличии задолженности
 CREATE OR REPLACE FUNCTION trigger_event_registration_check() 
 RETURNS TRIGGER AS $$
 BEGIN
+
     -- Проверяем наличие активных штрафов у читателя перед регистрацией на мероприятие
     IF NOT check_active_fines(NEW.reader_id) THEN
         RAISE EXCEPTION 'Регистрация на мероприятие временно недоступна из-за активных штрафов';
     END IF;
 
-    RETURN NEW; -- Возвращаем изменения
+    RETURN NEW; -- Возвращаем новые данные записи о регистрации
 END;
 $$ LANGUAGE plpgsql;
 
-CREATE TRIGGER event_registration_check
-BEFORE INSERT ON event_registrations -- Триггер срабатывает перед добавлением записи о регистрации на мероприятие
+CREATE TRIGGER event_registration_block
+BEFORE INSERT ON event_registrations -- Триггер срабатывает перед добавлением новой записи о регистрации на мероприятие
 FOR EACH ROW EXECUTE FUNCTION trigger_event_registration_check();
 
 ### Транзакция 1: Выдача книги читателю
